@@ -91,7 +91,6 @@ export const Users = () => {
 
   return (
     <Grid container spacing={3}>
-      {/* Wat */}
       <Grid item xs={12} md={8} lg={8}>
         <Paper
           sx={{
