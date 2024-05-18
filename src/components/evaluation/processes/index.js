@@ -12,7 +12,8 @@ import axios from 'axios';
 import { Autocomplete, Stack, TextField } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import Button from '@mui/material/Button';
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export const EvaluationProcesses = () => {
   const { evaluationId } = useParams();
@@ -21,39 +22,52 @@ export const EvaluationProcesses = () => {
   const [selected, setSelected] = useState([]);
   const [added, setAdded] = useState([]);
   const [disabled, setDisabled] = useState(true);
+  const { currentUser } = useAuth();
+
   const navigate = useNavigate();
 
   useEffect(() => {
     if (evaluationId) {
-      const endpoints = [
-        '/api/processes',
-        `/api/evaluation/processes?evaluationId=${evaluationId}`
-      ];
-      const requests = endpoints.map((url) => axios.get(url));
-      axios.all(requests).then((response) => {
-        const processesResponse = response[0].data;
-        const selectedProcessesResponse = response[1].data;
-        setProcesses(processesResponse);
-        setSelected(selectedProcessesResponse.map((process) => process.id));
-        if (selectedProcessesResponse.length === 0) {
-          setDisabled(false);
-        }
-      })
+      if (currentUser != null) {
+        const idToken = currentUser.getIdToken(true);
+        idToken.then((res) => {
+          const endpoints = ['/api/processes', `/api/evaluation/processes?evaluationId=${evaluationId}`];
+          const requests = endpoints.map((url) => axios.get(url));
+          axios
+            .all(requests)
+            .then((response) => {
+              const processesResponse = response[0].data;
+              const selectedProcessesResponse = response[1].data;
+              setProcesses(processesResponse);
+              setSelected(selectedProcessesResponse.map((process) => process.id));
+              if (selectedProcessesResponse.length === 0) {
+                setDisabled(false);
+              }
+            })
+            .catch((error) => {
+              if (error.response && error.response.status === 403) {
+                navigate('/start');
+              }
+            });
+        });
+      }
     }
-  }, []);
+  }, [currentUser, evaluationId, navigate]);
 
   const next = () => navigate(`/${evaluationId}/data-types`);
 
   const postProcesses = () => {
     const newProcesses = added.filter((newProcess) => selected.indexOf(newProcess.id) > -1);
     console.log(newProcesses);
-    axios.post('/api/evaluation/processes', {
-      evaluationId,
-      processes: selected.filter((id) => !isNaN(id)),
-      newProcesses
-    }).then((response) => {
-      next();
-    })
+    axios
+      .post('/api/evaluation/processes', {
+        evaluationId,
+        processes: selected.filter((id) => !isNaN(id)),
+        newProcesses,
+      })
+      .then((response) => {
+        next();
+      });
   };
 
   const removeSelected = (selectedId) => {
@@ -85,12 +99,8 @@ export const EvaluationProcesses = () => {
                   <TableRow key={process.id}>
                     <TableCell>{process.name}</TableCell>
                     <TableCell align="right">
-                      <IconButton
-                        disabled={disabled}
-                        color="error"
-                        onClick={() => removeSelected(process.id)}
-                      >
-                        <DeleteIcon/>
+                      <IconButton disabled={disabled} color="error" onClick={() => removeSelected(process.id)}>
+                        <DeleteIcon />
                       </IconButton>
                     </TableCell>
                   </TableRow>
@@ -98,7 +108,7 @@ export const EvaluationProcesses = () => {
               })}
             </TableBody>
           </Table>
-          <br/>
+          <br />
           <Autocomplete
             freeSolo
             disabled={disabled}
@@ -107,15 +117,15 @@ export const EvaluationProcesses = () => {
             disablePortal
             name={new Date().getTime()}
             options={combinedProcesses
-            .filter((process) => selected.indexOf(process.id) < 0)
-            .map((process) => ({
-              id: process.id,
-              label: process.name
-            }))}
+              .filter((process) => selected.indexOf(process.id) < 0)
+              .map((process) => ({
+                id: process.id,
+                label: process.name,
+              }))}
             onChange={(e, value) => {
               if (typeof value === 'string') {
                 const newId = `new-${added.length}`;
-                setAdded([...added, {id: newId, name: value}]);
+                setAdded([...added, { id: newId, name: value }]);
                 setSelected([...selected, newId]);
               } else {
                 setSelected([...selected, value.id]);
@@ -123,13 +133,10 @@ export const EvaluationProcesses = () => {
               setAutoCompleteValue([]);
             }}
             sx={{ width: 300 }}
-            renderInput={(params) => <TextField {...params} label="Add..."/>}
+            renderInput={(params) => <TextField {...params} label="Add..." />}
           />
           <Stack direction="row" justifyContent="end">
-            <Button
-              variant="contained"
-              onClick={disabled ? next : postProcesses}
-            >
+            <Button variant="contained" onClick={disabled ? next : postProcesses}>
               Next
             </Button>
           </Stack>
@@ -143,9 +150,9 @@ export const EvaluationProcesses = () => {
             flexDirection: 'column',
           }}
         >
-          <img src="https://simple.duttiv.com/fw/processes.png"/>
+          <img alt="" src="https://simple.duttiv.com/fw/processes.png" />
         </Paper>
       </Grid>
     </Grid>
   );
-}
+};

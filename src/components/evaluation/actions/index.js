@@ -7,11 +7,14 @@ import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TableBody from '@mui/material/TableBody';
 import Table from '@mui/material/Table';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 import axios from 'axios';
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from 'react-router-dom';
 import { stringAvatar } from '../../../helpers';
 import { Autocomplete, Avatar, Stack, TextField } from '@mui/material';
 import Button from '@mui/material/Button';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export const EvaluationActions = () => {
   const { evaluationId } = useParams();
@@ -20,34 +23,55 @@ export const EvaluationActions = () => {
   const [newActions, setNewActions] = useState([]);
   const [addedAction, setAddedAction] = useState({});
   const [users, setUsers] = useState([]);
+  const [saveStatus, setSaveStatus] = useState({
+    message: '',
+    severity: 'success',
+  });
+  const { currentUser } = useAuth();
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!evaluationPeriodId) {
-      axios.get(`/api/evaluation-period?evaluationId=${evaluationId}`).then((response) => {
-        if (response.status === 200 && response.data && response.data.length > 0) {
-          setEvaluationPeriodId(response.data[0].evaluationPeriodId);
-        } else {
-          setEvaluationPeriodId(2);
-        }
-      })
+      if (currentUser != null) {
+        const idToken = currentUser.getIdToken(true);
+        idToken.then((res) => {
+          axios
+            .get(`/api/evaluation-period?evaluationId=${evaluationId}`)
+            .then((response) => {
+              if (response.status === 200 && response.data && response.data.length > 0) {
+                setEvaluationPeriodId(response.data[0].evaluationPeriodId);
+              } else {
+                setEvaluationPeriodId(2);
+              }
+            })
+            .catch((error) => {
+              if (error.response && error.response.status === 403) {
+                navigate('/start');
+              }
+            });
+        });
+      }
     }
-  }, []);
+  }, [currentUser, evaluationId, evaluationPeriodId, navigate]);
 
   useEffect(() => {
     if (evaluationPeriodId) {
-      const endpoints = [
-        `/api/users`,
-        `/api/evaluation/actions?evaluationPeriodId=${evaluationPeriodId}`,
-      ];
-      const requests = endpoints.map((url) => axios.get(url));
-      axios.all(requests).then((response) => {
-        const usersResponse = response[0].data;
-        const actionsResponse = response[1].data;
-        setUsers(usersResponse);
-        setActions(actionsResponse);
-      })
+      if (currentUser != null) {
+        const idToken = currentUser.getIdToken(true);
+        idToken.then((res) => {
+          const endpoints = [`/api/users`, `/api/evaluation/actions?evaluationPeriodId=${evaluationPeriodId}`];
+          const requests = endpoints.map((url) => axios.get(url));
+          axios.all(requests).then((response) => {
+            const usersResponse = response[0].data;
+            const actionsResponse = response[1].data;
+            setUsers(usersResponse);
+            setActions(actionsResponse);
+          });
+        });
+      }
     }
-  }, [evaluationPeriodId]);
+  }, [currentUser, evaluationPeriodId]);
 
   const allActions = [...actions, ...newActions];
 
@@ -61,8 +85,42 @@ export const EvaluationActions = () => {
             &nbsp;
             {found.firstName} {found.lastName}
           </div>
-        )
+        );
       }
+    }
+  };
+
+  const saveActions = async () => {
+    try {
+      await axios.post('/api/evaluation/actions', {
+        evaluationPeriodId,
+        actions: newActions,
+      });
+      setActions([...actions, ...newActions]);
+      setNewActions([]);
+      setSaveStatus({
+        message: 'Actions saved successfully!',
+        severity: 'success',
+      });
+      setTimeout(
+        () =>
+          setSaveStatus({
+            message: '',
+            severity: null,
+          }),
+        3000
+      );
+    } catch (err) {
+      console.error('Failed to save actions:', err);
+      setSaveStatus({ message: 'Failed to save actions.', severity: 'error' });
+      setTimeout(
+        () =>
+          setSaveStatus({
+            message: '',
+            severity: null,
+          }),
+        3000
+      );
     }
   };
 
@@ -82,15 +140,9 @@ export const EvaluationActions = () => {
             <TableBody>
               {allActions.map((action) => (
                 <TableRow key={action.id}>
-                  <TableCell>
-                    {action.activity}
-                  </TableCell>
-                  <TableCell>
-                    {getStakeholder(action)}
-                  </TableCell>
-                  <TableCell>
-                    {action.status}
-                  </TableCell>
+                  <TableCell>{action.activity}</TableCell>
+                  <TableCell>{getStakeholder(action)}</TableCell>
+                  <TableCell>{action.status}</TableCell>
                 </TableRow>
               ))}
               {Object.keys(addedAction).length > 0 && (
@@ -100,10 +152,12 @@ export const EvaluationActions = () => {
                       required
                       fullWidth
                       label="Insert activity description..."
-                      onBlur={(e) => setAddedAction({
-                        ...addedAction,
-                        activity: e.target.value
-                      })}
+                      onBlur={(e) =>
+                        setAddedAction({
+                          ...addedAction,
+                          activity: e.target.value,
+                        })
+                      }
                     />
                   </TableCell>
                   <TableCell>
@@ -111,7 +165,7 @@ export const EvaluationActions = () => {
                       disablePortal
                       options={users.map((user) => ({
                         id: user.id,
-                        label: `${user.firstName} ${user.lastName}`
+                        label: `${user.firstName} ${user.lastName}`,
                       }))}
                       onChange={(e, user) => {
                         if (user) {
@@ -119,27 +173,33 @@ export const EvaluationActions = () => {
                         }
                       }}
                       sx={{ width: 300 }}
-                      renderInput={(params) =>
-                        <TextField {...params} label="Select assignee..."/>}
+                      renderInput={(params) => <TextField {...params} label="Select assignee..." />}
                     />
                   </TableCell>
                   <TableCell>
-                    <Button onClick={() => {
-                      setNewActions([...newActions, addedAction]);
-                      setAddedAction({});
-                    }}>
+                    <Button
+                      onClick={() => {
+                        setNewActions([...newActions, addedAction]);
+                        setAddedAction({});
+                      }}
+                    >
                       Add!
                     </Button>
                   </TableCell>
                 </TableRow>
               )}
               <br />
-              <Stack direction="row" justifyContent="start">
-                <Button
-                  variant="contained"
-                  onClick={() => setAddedAction({ activity: '', userId: null})}
-                >
+              {saveStatus.message && (
+                <Box mb={2}>
+                  <Alert severity={saveStatus.severity}>{saveStatus.message}</Alert>
+                </Box>
+              )}
+              <Stack direction="row" spacing={2} justifyContent="start">
+                <Button variant="contained" onClick={() => setAddedAction({ activity: '', userId: null })}>
                   Add action..
+                </Button>
+                <Button variant="contained" onClick={saveActions} disabled={newActions.length === 0}>
+                  Save actions
                 </Button>
               </Stack>
             </TableBody>
@@ -148,4 +208,4 @@ export const EvaluationActions = () => {
       </Grid>
     </Grid>
   );
-}
+};

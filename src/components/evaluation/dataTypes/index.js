@@ -15,16 +15,16 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemButton from '@mui/material/ListItemButton';
 import Button from '@mui/material/Button';
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from 'react-router-dom';
 import { stringToColor } from '../../../helpers';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const calculateCount = (selected, dataTypes) => {
   const result = [];
   dataTypes.forEach((dataType) => {
-    const count = Object.values(selected)
-    .filter((selectedDataTypes) => selectedDataTypes.includes(dataType.id)).length;
+    const count = Object.values(selected).filter((selectedDataTypes) => selectedDataTypes.includes(dataType.id)).length;
     if (count > 0) {
-      result.push({ name: dataType.name, count })
+      result.push({ name: dataType.name, count });
     }
   });
   return result.sort((o1, o2) => o2.count - o1.count);
@@ -35,35 +35,52 @@ export const DataTypes = () => {
   const [evaluationProcesses, setEvaluationProcesses] = useState([]);
   const [dataTypes, setDataTypes] = useState([]);
   const [selected, setSelected] = useState({});
+  const { currentUser } = useAuth();
+
   const navigate = useNavigate();
 
   useEffect(() => {
     if (evaluationId) {
-      const endpoints = [
-        '/api/data-types',
-        `/api/processes`,
-        `/api/evaluation/processes?evaluationId=${evaluationId}`,
-        `/api/evaluation/data-types?evaluationId=${evaluationId}`
-      ];
-      const requests = endpoints.map((url) => axios.get(url));
-      axios.all(requests).then((response) => {
-        const dataTypesResponse = response[0].data;
-        const processesResponse = response[1].data;
-        const evaluationProcessesResponse = response[2].data;
-        const evaluationDataTypesResponse = response[3].data;
-        setDataTypes(dataTypesResponse);
-        setEvaluationProcesses(evaluationProcessesResponse);
-        const initialSelected = {};
-        processesResponse.forEach((process) => {
-          initialSelected[process.id] = evaluationDataTypesResponse && evaluationDataTypesResponse
-          .filter((edtr) => edtr.processId === process.id).map((edtr) => edtr.dataTypeId);
+      if (currentUser != null) {
+        const idToken = currentUser.getIdToken(true);
+        idToken.then((res) => {
+          const endpoints = [
+            '/api/data-types',
+            `/api/processes`,
+            `/api/evaluation/processes?evaluationId=${evaluationId}`,
+            `/api/evaluation/data-types?evaluationId=${evaluationId}`,
+          ];
+          const requests = endpoints.map((url) => axios.get(url));
+          axios
+            .all(requests)
+            .then((response) => {
+              const dataTypesResponse = response[0].data;
+              const processesResponse = response[1].data;
+              const evaluationProcessesResponse = response[2].data;
+              const evaluationDataTypesResponse = response[3].data;
+              setDataTypes(dataTypesResponse);
+              setEvaluationProcesses(evaluationProcessesResponse);
+              const initialSelected = {};
+              processesResponse.forEach((process) => {
+                initialSelected[process.id] =
+                  evaluationDataTypesResponse &&
+                  evaluationDataTypesResponse
+                    .filter((edtr) => edtr.processId === process.id)
+                    .map((edtr) => edtr.dataTypeId);
+              });
+              setSelected(initialSelected);
+            })
+            .catch((error) => {
+              if (error.response && error.response.status === 403) {
+                navigate('/start');
+              }
+            });
         });
-        setSelected(initialSelected);
-      })
+      }
     }
-  }, []);
+  }, [currentUser, evaluationId, navigate]);
 
-  const next = () => navigate(`/${evaluationId}/assessment`); // TODO: Tools
+  const next = () => navigate(`/${evaluationId}/tools`);
 
   const postDataTypes = () => {
     const data = [];
@@ -75,8 +92,7 @@ export const DataTypes = () => {
         dataTypes.forEach((dataTypeId) => data.push({ evaluationProcessId, dataTypeId }));
       }
     });
-    axios.post('/api/evaluation/data-types', { data })
-    .then(next)
+    axios.post('/api/evaluation/data-types', { data }).then(next);
   };
 
   const toggleDataType = (processId, dataTypeId) => {
@@ -107,10 +123,12 @@ export const DataTypes = () => {
             </TableHead>
             <TableBody>
               {evaluationProcesses.map((process) => (
-                  <TableRow key={process.id}>
-                    <TableCell>{process.name}</TableCell>
-                    <TableCell>
-                      {selected[process.id] && selected[process.id].map((dataTypeId) => {
+                <TableRow key={process.id}>
+                  <TableCell>{process.name}</TableCell>
+                  <TableCell>
+                    {selected[process.id] &&
+                      // eslint-disable-next-line array-callback-return
+                      selected[process.id].map((dataTypeId) => {
                         const dataType = dataTypes.find((dataType) => dataType.id === dataTypeId);
                         if (dataType) {
                           return (
@@ -118,57 +136,50 @@ export const DataTypes = () => {
                               <Chip
                                 sx={{
                                   marginBottom: '4px',
-                                  backgroundColor: `${stringToColor(dataType.name)}60`
+                                  backgroundColor: `${stringToColor(dataType.name)}60`,
                                 }}
                                 label={dataType.name}
                                 size="small"
                               />
-                              <br/>
+                              <br />
                             </Fragment>
                           );
                         }
                       })}
-                    </TableCell>
-                    <TableCell align="right">
-                      <SimplePopper
-                        trigger={<Chip size="small" label="Select"/>}
-                        content={(
-                          <List>
-                            {dataTypes.map((dataType) => (
-                              <ListItemButton
-                                role={undefined}
-                                onClick={() => toggleDataType(process.id, dataType.id)}
-                                dense
-                              >
-                                <ListItemIcon>
-                                  <Checkbox
-                                    edge="start"
-                                    checked={selected[process.id] && selected[process.id]
-                                    .includes(dataType.id)}
-                                    tabIndex={-1}
-                                    disableRipple
-                                  />
-                                </ListItemIcon>
-                                <ListItemText
-                                  id={dataType.id}
-                                  primary={dataType.name}/>
-                              </ListItemButton>
-                            ))}
-                          </List>
-                        )}
-                      />
-                    </TableCell>
-                  </TableRow>
-                )
-              )}
+                  </TableCell>
+                  <TableCell align="right">
+                    <SimplePopper
+                      trigger={<Chip size="small" label="Select" />}
+                      content={
+                        <List>
+                          {dataTypes.map((dataType) => (
+                            <ListItemButton
+                              role={undefined}
+                              onClick={() => toggleDataType(process.id, dataType.id)}
+                              dense
+                            >
+                              <ListItemIcon>
+                                <Checkbox
+                                  edge="start"
+                                  checked={selected[process.id] && selected[process.id].includes(dataType.id)}
+                                  tabIndex={-1}
+                                  disableRipple
+                                />
+                              </ListItemIcon>
+                              <ListItemText id={dataType.id} primary={dataType.name} />
+                            </ListItemButton>
+                          ))}
+                        </List>
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
-          <br/>
+          <br />
           <Stack direction="row" justifyContent="end">
-            <Button
-              variant="contained"
-              onClick={postDataTypes}
-            >
+            <Button variant="contained" onClick={postDataTypes}>
               Next
             </Button>
           </Stack>
@@ -191,12 +202,8 @@ export const DataTypes = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {calculateCount(selected, dataTypes)
-              .map((dataType) => (
-                <TableRow
-                  key={dataType.name}
-                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
+              {calculateCount(selected, dataTypes).map((dataType) => (
+                <TableRow key={dataType.name} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                   <TableCell component="th" scope="row">
                     {dataType.name}
                   </TableCell>
@@ -209,4 +216,4 @@ export const DataTypes = () => {
       </Grid>
     </Grid>
   );
-}
+};

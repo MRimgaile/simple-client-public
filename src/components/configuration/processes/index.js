@@ -7,40 +7,50 @@ import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TableBody from '@mui/material/TableBody';
 import DeleteIcon from '@mui/icons-material/Delete';
-import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
 import Table from '@mui/material/Table';
-import axios from 'axios';
-import { Autocomplete, Avatar, AvatarGroup, Checkbox, Stack, TextField } from '@mui/material';
-import SimplePopper from '../../core/simplePopper';
+import { Autocomplete, Stack, TextField } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
-import List from '@mui/material/List';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import ListItemText from '@mui/material/ListItemText';
-import ListItemButton from '@mui/material/ListItemButton';
 import Button from '@mui/material/Button';
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../contexts/AuthContext';
+import axios from 'axios';
 
 export const Processes = ({ evaluationId }) => {
   const [autoCompleteValue, setAutoCompleteValue] = useState([]);
   const [processes, setProcesses] = useState([]);
   const [selected, setSelected] = useState([]);
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios.get('/api/processes').then((response) => {
-      if (response.status === 200) {
-        setProcesses(response.data);
-      }
-    })
-  }, []);
+    if (currentUser != null) {
+      const idToken = currentUser.getIdToken(true);
+      idToken.then((res) => {
+        axios
+          .get('/api/processes')
+          .then((response) => {
+            if (response.status === 200) {
+              setProcesses(response.data);
+            }
+          })
+          .catch((error) => {
+            if (error.response && error.response.status === 403) {
+              navigate('/start');
+            }
+          });
+      });
+    }
+  }, [currentUser, navigate]);
 
   const postProcesses = () => {
-    axios.post('/api/processes', {
-      evaluationId,
-      processes: selected
-    }).then((response) => {
-      navigate('/data-types');
-    })
+    axios
+      .post('/api/processes', {
+        evaluationId,
+        processes: selected,
+      })
+      .then((response) => {
+        navigate('/data-types');
+      });
   };
 
   const removeSelected = (selectedId) => {
@@ -70,11 +80,8 @@ export const Processes = ({ evaluationId }) => {
                   <TableRow key={process.id}>
                     <TableCell>{process.name}</TableCell>
                     <TableCell align="right">
-                      <IconButton
-                        color="error"
-                        onClick={() => removeSelected(process.id)}
-                      >
-                        <DeleteIcon/>
+                      <IconButton color="error" onClick={() => removeSelected(process.id)}>
+                        <DeleteIcon />
                       </IconButton>
                     </TableCell>
                   </TableRow>
@@ -82,17 +89,17 @@ export const Processes = ({ evaluationId }) => {
               })}
             </TableBody>
           </Table>
-          <br/>
+          <br />
           <Autocomplete
             value={autoCompleteValue}
             disableClearable
             disablePortal
             options={processes
-            .filter((sh) => selected.indexOf(sh.id) < 0)
-            .map((department) => ({
-              id: department.id,
-              label: department.name
-            }))}
+              .filter((sh) => selected.indexOf(sh.id) < 0)
+              .map((department) => ({
+                id: department.id,
+                label: department.name,
+              }))}
             onChange={(e, value) => {
               if (value) {
                 setSelected([...selected, value.id]);
@@ -100,13 +107,10 @@ export const Processes = ({ evaluationId }) => {
               }
             }}
             sx={{ width: 300 }}
-            renderInput={(params) => <TextField {...params} label="Add..."/>}
+            renderInput={(params) => <TextField {...params} label="Add..." />}
           />
           <Stack direction="row" justifyContent="end">
-            <Button
-              variant="contained"
-              onClick={postProcesses}
-            >
+            <Button variant="contained" onClick={postProcesses}>
               Next
             </Button>
           </Stack>
@@ -120,9 +124,9 @@ export const Processes = ({ evaluationId }) => {
             flexDirection: 'column',
           }}
         >
-          <img src="https://simple.duttiv.com/fw/processes.png"/>
+          <img alt="" src="https://simple.duttiv.com/fw/processes.png" />
         </Paper>
       </Grid>
     </Grid>
   );
-}
+};
